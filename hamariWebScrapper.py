@@ -1,4 +1,8 @@
 import time
+from datetime import datetime
+
+
+# Import pandas
 import pandas as pd
 import csv
 from selenium.webdriver.support.ui import WebDriverWait
@@ -15,32 +19,43 @@ def createFile(data, fileName):
         write.writerows(data)
 
 
+def formatNum(num):
+    num = str(num).replace('.', '')
+    length = len(str(num))
+    if length == 6:
+        return num
+    for i in range(6 - length):
+        num = "0" + str(num)
+    return num[:6]
+
+
 def checkSingleNumbers(driver, bondNumbers):
     for num in bondNumbers:
         numberField = driver.find_element_by_id("txtNumber")
-        numberField.send_keys(num)
-        time.sleep(1)
+        numberField.send_keys(formatNum(num))
+        time.sleep(0.3)
 
         addBtn = driver.find_element(by=By.CLASS_NAME, value="btn_add")
         addBtn.click()
-        time.sleep(1)
+        time.sleep(0.3)
 
     time.sleep(1)
 
 
 def checkSeriesNumbers(driver, bondNumbers):
     for num in bondNumbers:
+        frm, to = str(num).split("-")
         fromNum = driver.find_element_by_id("txtFrm")
-        fromNum.send_keys(num[0])
-        time.sleep(1)
+        fromNum.send_keys(formatNum(frm))
+        time.sleep(0.7)
 
         toNum = driver.find_element_by_id("txtTo")
-        toNum.send_keys(num[1])
-        time.sleep(1)
+        toNum.send_keys(formatNum(to))
+        time.sleep(0.7)
 
         addBtn = driver.find_element(by=By.CLASS_NAME, value="btn_add")
         addBtn.click()
-        time.sleep(1)
+        time.sleep(0.7)
 
     time.sleep(1)
 
@@ -76,7 +91,19 @@ def selectDomination(driver, bondValue):
 def clickCheckBtn(driver):
     checkBtn = driver.find_element(by=By.CLASS_NAME, value="btn_check")
     checkBtn.click()
-    time.sleep(3)
+    time.sleep(0.8)
+
+
+def clickClearBtn(driver):
+    clearBtn = driver.find_element(by=By.CLASS_NAME, value="btn_clear")
+    clearBtn.click()
+    time.sleep(0.8)
+
+
+def clickRadioBtn(driver, name):
+    radioBtn = driver.find_element(by=By.ID, value=name)
+    radioBtn.click()
+    time.sleep(0.8)
 
 
 def parseResults(driver, bondValue, type):
@@ -92,28 +119,72 @@ def parseResults(driver, bondValue, type):
             table_row.append(column.text)
         rows.append(table_row)
 
-    createFile(rows, "bond_result_{}_{}".format(bondValue, type))
+    if(len(rows) > 2 and rows[2][0] != "Sorry No Win"):
+        createFile(rows, "bond_result_{}_{}_{}".format(
+            bondValue, type, datetime.now().strftime("%m_%Y_%H_%M_%S")))
 
 
-def readFileData():
-    df = pd.read_excel (r'LIST.xlsx')
-    print (df)
+def readFileData(bondValue):
+    # Assign spreadsheet filename to `file`
+    file = 'LIST.csv'
+    data = pd.read_csv(file, low_memory=False, skiprows=1)
+    # data.columns = data.columns.str.strip()
+    cols = list(data)
+    print(cols)
+
+    # Load spreadsheet
+    # suffix = ".2"
+    suffix = ""
+    colName = "RS {:,}{}".format(int(bondValue), suffix)
+    if colName not in cols:
+        return [], []
+
+    numbers = [x for x in data[colName] if str(x) != 'nan']
+
+    print("Numbers: ", numbers)
+    single = []
+    series = []
+    for number in numbers:
+        if "-" in str(number):
+            series.append(str(number).strip())
+        else:
+            single.append(str(number).strip())
+
+    return single, series
+
 
 if __name__ == '__main__':
-    readFileData()
-    # driver = webdriver.Chrome("/Users/apple/Downloads/chromedriver")
+    SINGLE = "single"
+    SERIES = "series"
 
-    # url = 'https://hamariweb.com/finance/prizebonds/'
-    # driver.get(url)
+    driver = webdriver.Chrome("/Users/apple/Downloads/chromedriver")
+    url = 'https://hamariweb.com/finance/prizebonds/'
+    driver.get(url)
 
-    # bondValue = "750"
+    # 100, 200, 750
 
-    # selectDomination(driver, bondValue)
+    for bondValue in ["100", "200", "750", "1500", "7500", "15000", "25000", '40000']:
+        single, series = readFileData(bondValue)
 
+        selectDomination(driver, bondValue)
 
-    # checkSingleNumbers(driver, bondNumbers)
+        for bond in [(single, SINGLE), (series, SERIES)]:
+            nums, type = bond
 
-    # clickCheckBtn(driver)
-    # parseResults(driver, bondValue, "single")
+            if type == SINGLE:
+                if(len(nums) == 0):
+                    break
+                clickRadioBtn(driver, "radio_input")
+                clickClearBtn(driver)
+                checkSingleNumbers(driver, nums)
+            else:
+                if(len(nums) == 0):
+                    break
+                clickRadioBtn(driver, "radio_input_2")
+                clickClearBtn(driver)
+                checkSeriesNumbers(driver, nums)
 
-    # driver.close()
+            clickCheckBtn(driver)
+            parseResults(driver, bondValue, type)
+
+    driver.close()
